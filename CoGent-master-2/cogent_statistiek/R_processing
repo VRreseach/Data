@@ -1,0 +1,188 @@
+# get the data (averaged scores for the two conditions)
+df <- read.csv2("raw_data.csv")
+
+# getting the data ready for analysis
+library(reshape2)
+
+df_long <- melt(df)
+df_long_annotated <- df_long
+df_long_annotated$dimension <- NA
+df_long_annotated$condition <- NA
+
+for(i in 1:nrow(df_long_annotated)){
+  if(df_long_annotated$variable[i]=="involvement_paper" | df_long_annotated$variable[i]=="involvement_VR"){
+    df_long_annotated$dimension[i] <- "involvement"
+  }
+  if(df_long_annotated$variable[i]=="presence_paper" | df_long_annotated$variable[i]=="presence_VR"){
+    df_long_annotated$dimension[i] <- "presence"
+  }
+  if(df_long_annotated$variable[i]=="realism_paper" | df_long_annotated$variable[i]=="realism_VR"){
+    df_long_annotated$dimension[i] <- "realism"
+  }
+  if(df_long_annotated$variable[i]=="interactivity_paper" | df_long_annotated$variable[i]=="interactivity_VR"){
+    df_long_annotated$dimension[i] <- "interactivity"
+  }
+  if(df_long_annotated$variable[i]=="MARS_paper" | df_long_annotated$variable[i]=="MARS_VR"){
+    df_long_annotated$dimension[i] <- "MARS"
+  }
+  if(df_long_annotated$variable[i]=="ASQ_paper" | df_long_annotated$variable[i]=="ASQ_VR"){
+    df_long_annotated$dimension[i] <- "ASQ"
+  }
+}
+
+for(i in 1:nrow(df_long_annotated)){
+  if(df_long_annotated$variable[i]=="involvement_paper" | 
+     df_long_annotated$variable[i]=="presence_paper"|
+     df_long_annotated$variable[i]=="realism_paper"|
+     df_long_annotated$variable[i]=="interactivity_paper"|
+     df_long_annotated$variable[i]=="MARS_paper"|
+     df_long_annotated$variable[i]=="ASQ_paper"){
+    df_long_annotated$condition[i] <- "paper"
+  }
+  if(df_long_annotated$variable[i]=="involvement_VR" | 
+     df_long_annotated$variable[i]=="presence_VR"|
+     df_long_annotated$variable[i]=="realism_VR"|
+     df_long_annotated$variable[i]=="interactivity_VR"|
+     df_long_annotated$variable[i]=="MARS_VR"|
+     df_long_annotated$variable[i]=="ASQ_VR"){
+    df_long_annotated$condition[i] <- "VR"
+  }
+  
+}
+
+# parametric conditions: visual inspection
+library(ggplot2)
+g <- ggplot(df_long_annotated, aes(x=value))
+g + geom_histogram(aes(fill=condition, color= 0, alpha=0.5)) +
+  facet_grid(dimension ~ .) + guides(colour = "none", alpha= "none") +
+  labs(title="data distributions",
+       x ="mean item scores", y = "frequency")
+
+    # conclusion: doesn't look so normal
+
+# parametric conditions: normality Shapiro-Wilk test
+shapiro <- tapply(df_long$value,df_long$variable,shapiro.test)
+shapiro_table <- data.frame(
+                  variable = names(shapiro)
+                  )
+for(i in 1:length(shapiro)){
+  shapiro_table$shapiro_w[i] <- shapiro[[i]]$statistic
+  shapiro_table$shapiro_p[i] <- shapiro[[i]]$p.value
+  }
+
+shapiro_table # p < 0.05 = not normally distributed 
+              # involvement_paper, presence_paper& MARS_paper non-parametric
+
+
+# parametric conditions: normality Kolmogorov- Smirnov test
+library(nortest)
+kolmogorov <- tapply(df_long$value,df_long$variable,lillie.test)
+kolmogorov_table <- data.frame(
+  variable = names(kolmogorov)
+)
+for(i in 1:length(kolmogorov)){
+  kolmogorov_table$kolmogorov_d[i] <- kolmogorov[[i]]$statistic
+  kolmogorov_table$kolmogorov_p[i] <- kolmogorov[[i]]$p.value
+}
+
+kolmogorov_table # p < 0.05 = not normally distributed 
+                 # ASQ_VR non-parametric
+
+# merge it for publication
+normality <- cbind(shapiro_table, kolmogorov_table[,2:3])
+normality$normal <- ifelse(normality$shapiro_p < 0.05 | normality$kolmogorov_p < 0.05, F, T)
+
+
+# to put it in some tables
+library(rempsyc)
+nice_table(
+  normality, 
+  title = c("Table 1", "Normality of the data")
+)
+
+# parametric conditions: conclusions normality
+  # parametric: realism, interactivity
+  # non-parametric: involvement, presence, MARS, ASQ
+
+
+
+# parametric tests (paired samples t-test): realism
+realism.test <- t.test(df$realism_paper, df$realism_VR, paired = TRUE)
+realism.result <- data.frame(
+  variable = "realism",
+  mean_paper = mean(df$realism_paper),
+  sd_paper = sd(df$realism_paper),
+  mean_VR = mean(df$realism_VR),
+  sd_VR = sd(df$realism_VR),
+  t = realism.test$statistic,
+  df = realism.test$parameter,
+  p = realism.test$p.value
+)
+# parametric tests (paired samples t-test): interactivity
+interactivity.test <- t.test(df$interactivity_paper, df$interactivity_VR, paired = TRUE)
+interactivity.result <- data.frame(
+  variable = "interactivity",
+  mean_paper = mean(df$interactivity_paper),
+  sd_paper = sd(df$interactivity_paper),
+  mean_VR = mean(df$interactivity_VR),
+  sd_VR = sd(df$interactivity_VR),
+  t = interactivity.test$statistic,
+  df = interactivity.test$parameter,
+  p = interactivity.test$p.value
+)
+
+parametric.tests <- rbind(realism.result,interactivity.result)
+
+# non-parametric tests (Wilcoxon signed-rank): involvement
+involvement.test <- wilcox.test(df$involvement_paper, df$involvement_VR, paired = TRUE)
+involvement.result <- data.frame(
+  variable = "involvement",
+  median_paper = median(df$involvement_paper),
+  median_VR = median(df$involvement_VR),
+  V = involvement.test$statistic,
+  p = involvement.test$p.value
+)
+
+# non-parametric tests (Wilcoxon signed-rank): presence
+presence.test <- wilcox.test(df$presence_paper, df$presence_VR, paired = TRUE)
+presence.result <- data.frame(
+  variable = "presence",
+  median_paper = median(df$presence_paper),
+  median_VR = median(df$presence_VR),
+  V = presence.test$statistic,
+  p = presence.test$p.value
+)
+
+# non-parametric tests(Wilcoxon signed-rank): MARS
+MARS.test <- wilcox.test(df$MARS_paper, df$MARS_VR, paired = TRUE)
+MARS.result <- data.frame(
+  variable = "MARS",
+  median_paper = median(df$MARS_paper),
+  median_VR = median(df$MARS_VR),
+  V = MARS.test$statistic,
+  p = MARS.test$p.value
+)
+
+# non-parametric tests (Wilcoxon signed-rank):ASQ
+ASQ.test <- wilcox.test(df$ASQ_paper, df$ASQ_VR, paired = TRUE)
+ASQ.result <- data.frame(
+  variable = "ASQ",
+  median_paper = median(df$ASQ_paper, na.rm=T),
+  median_VR = median(df$ASQ_VR),
+  V = ASQ.test$statistic,
+  p = ASQ.test$p.value
+)
+
+nonparametric.tests <- rbind(presence.result, MARS.result, ASQ.result)
+
+# parametric table
+nice_table(
+  parametric.tests, 
+  title = c("Table 2", "results of the parametric tests (paired-samples t-tests)")
+)
+
+# nonparametric table
+nice_table(
+  nonparametric.tests, 
+  title = c("Table 3", "results of the nonparametric tests (Wilcoxon signed-rank tests)")
+)
